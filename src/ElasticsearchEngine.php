@@ -46,8 +46,7 @@ class ElasticsearchEngine extends Engine
     {
         $params['body'] = [];
 
-        $models->each(function($model) use (&$params)
-        {
+        $models->each(function ($model) use (&$params) {
             $params['body'][] = [
                 'update' => [
                     '_id' => $model->getKey(),
@@ -74,8 +73,7 @@ class ElasticsearchEngine extends Engine
     {
         $params['body'] = [];
 
-        $models->each(function($model) use (&$params)
-        {
+        $models->each(function ($model) use (&$params) {
             $params['body'][] = [
                 'delete' => [
                     '_id' => $model->getKey(),
@@ -118,7 +116,7 @@ class ElasticsearchEngine extends Engine
             'size' => $perPage,
         ]);
 
-       $result['nbPages'] = $this->getTotalCount($result)/$perPage;
+        $result['nbPages'] = $this->getTotalCount($result) / $perPage;
 
         return $result;
     }
@@ -137,8 +135,10 @@ class ElasticsearchEngine extends Engine
             'type' => $builder->index ?: $builder->model->searchableAs(),
             'body' => [
                 'query' => [
-                    'bool' => [
-                        'must' => [['query_string' => [ 'query' => "*{$builder->query}*"]]]
+                    'match_phrase_prefix' => [
+                        'data' => [
+                            'query' => $builder->query
+                        ]
                     ]
                 ]
             ]
@@ -157,8 +157,10 @@ class ElasticsearchEngine extends Engine
         }
 
         if (isset($options['numericFilters']) && count($options['numericFilters'])) {
-            $params['body']['query']['bool']['must'] = array_merge($params['body']['query']['bool']['must'],
-                $options['numericFilters']);
+            $params['body']['query']['bool']['must'] = array_merge(
+                $params['body']['query']['bool']['must'],
+                $options['numericFilters']
+            );
         }
 
         if ($builder->callback) {
@@ -211,6 +213,7 @@ class ElasticsearchEngine extends Engine
      */
     public function map(Builder $builder, $results, $model)
     {
+
         if ($this->getTotalCount($results) === 0) {
             return $model->newCollection();
         }
@@ -218,10 +221,11 @@ class ElasticsearchEngine extends Engine
         $keys = collect($results['hits']['hits'])->pluck('_id')->values()->all();
 
         return $model->getScoutModelsByIds(
-                $builder, $keys
-            )->filter(function ($model) use ($keys) {
-                return in_array($model->getScoutKey(), $keys);
-            });
+            $builder,
+            $keys
+        )->filter(function ($model) use ($keys) {
+            return in_array($model->getScoutKey(), $keys);
+        });
     }
 
     /**
@@ -232,11 +236,7 @@ class ElasticsearchEngine extends Engine
      */
     public function getTotalCount($results)
     {
-        $total = Arr::get($results, 'hits.total');
-        // version 7
-        if (is_array($total)) {
-            $total = $total['value'];
-        }
+        $total = Arr::get($results, 'hits.total.value');
 
         return $total;
     }
@@ -262,11 +262,12 @@ class ElasticsearchEngine extends Engine
      */
     protected function sort($builder)
     {
+        
         if (count($builder->orders) == 0) {
             return null;
         }
 
-        return collect($builder->orders)->map(function($order) {
+        return collect($builder->orders)->map(function ($order) {
             return [$order['column'] => $order['direction']];
         })->toArray();
     }
